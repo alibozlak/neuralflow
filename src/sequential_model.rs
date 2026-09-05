@@ -6,6 +6,7 @@ use crate::layer_request_info::LayerRequestInfo;
 pub struct SequentialModel {
     layers : Vec<Layer>,
     layer_count : usize,
+    a_output_matrices: Array1<Array2<f64>>,
 }
 
 impl SequentialModel {
@@ -30,14 +31,64 @@ impl SequentialModel {
             column_size = unit_count + 1;
         }
 
-        Self { layers, layer_count }
+        let a_output_matrices: Array1<Array2<f64>> = Array1::default(layer_count);
+
+        Self { layers, layer_count, a_output_matrices }
     }
 
     pub fn generate_sequential_model_with_layers(layers: Vec<Layer>, sample_feature_size: usize,) -> Self {
         Self::validate_layers(&layers, sample_feature_size);
 
         let layer_count = layers.len();
-        Self { layers, layer_count }
+        let a_output_matrices: Array1<Array2<f64>> = Array1::default(layer_count);
+        Self { layers, layer_count, a_output_matrices }
+    }
+
+    pub fn train_model(
+        &self,
+        a0_matrix: &Array2<f64>,
+        loop_count: usize,
+        learning_rate: f64
+    ) {
+        let layer_0: &Layer = &self.layers[0];
+        let unit_count = layer_0.get_matrix().ncols() - 1;
+        let row_count = layer_0.get_matrix().nrows();
+
+        for _ in 0..loop_count {
+            let mut layer_0_new_matrix: Array2<f64> = Array2::zeros((row_count, unit_count + 1));
+
+            //FixMe: Convert to Multithread processing
+            for u in 0..unit_count {
+                //ToDo: ****************** I'm HERE *********************
+            }
+        }
+    }
+
+    ///unit_index == layer_column_size - 1.
+    fn layer_inside_linear_function_derivative(
+        &self,
+        layer_index: usize,
+        unit_index: usize,
+        j: usize,
+        a0_matrix: &Array2<f64>,
+        y_array: &Array1<f64>,
+    ) -> f64 {
+        let mut result : f64 = 0.0;
+        let m: usize = a0_matrix.nrows();
+        for i in 0..m {
+            let mut unit_sum: f64 = 0.;
+            if layer_index == 0 {
+                let z_array_column: Array1<f64>
+                    = self.layers[layer_index].get_z_matrix_linear_output(&a0_matrix).column(unit_index).to_owned();
+
+                for i_inside in 0..m {
+                    unit_sum += z_array_column[i_inside]
+                }
+            }
+            result += a0_matrix[[i,j]] * (unit_sum- y_array[i]);
+        }
+
+        result * 2. / (m as f64)
     }
 
     ///Last layer critical layer for cost !!
@@ -111,7 +162,8 @@ impl SequentialModel {
         );
         a_previous_matrix.slice_mut(s![.., ..feature_size]).assign(a0_matrix);
         for layer_index in 0..self.layer_count {
-            a_previous_matrix = Self::build_a_next(&self.layers[layer_index], a_previous_matrix);
+            a_previous_matrix =
+                self.layers[layer_index].build_a_next(a_previous_matrix);
         }
 
         a_previous_matrix.column(0).to_owned()
@@ -122,16 +174,6 @@ impl SequentialModel {
         input_matrix.row_mut(0).assign(input);
 
         self.predict_array_for_learning(&input_matrix)[0]
-    }
-
-    fn build_a_next(layer: &Layer, a_previous: Array2<f64>) -> Array2<f64> {
-        let z_matrix_linear_output = &a_previous.dot(layer.get_matrix());
-        let mut a_next: Array2<f64>
-            = z_matrix_linear_output.mapv(|z_ij| layer.get_activation_function().apply(z_ij));
-
-        let column_size = a_next.ncols();
-        a_next.column_mut(column_size - 1).fill(1.);
-        a_next
     }
 
     pub fn summary(&self) -> String {
