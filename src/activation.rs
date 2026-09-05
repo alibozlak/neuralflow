@@ -1,9 +1,10 @@
 use std::fmt;
 use std::str::FromStr;
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub enum Activation {
 
+    #[default]
     Sigmoid,
 
     Linear,
@@ -15,7 +16,7 @@ pub enum Activation {
 
 impl Activation {
     pub fn apply(self, z: f64) -> f64 {
-        let mut result: f64 = 1.0;
+        let result: f64;
 
         match self {
             Activation::Sigmoid => { result = 1. / (1. + (-z).exp()); },

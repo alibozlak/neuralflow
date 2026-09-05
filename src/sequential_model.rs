@@ -4,7 +4,7 @@ use crate::layer::Layer;
 use crate::layer_request_info::LayerRequestInfo;
 
 pub struct SequentialModel {
-    layers : Vec<Layer>,
+    layers : Array1<Layer>,
     layer_count : usize,
 
     ///a_matrices will always add 1 column. Because matrix multiplication and derivative shortly.
@@ -21,7 +21,7 @@ impl SequentialModel {
         a0_matrix: &Array2<f64>,
     ) -> Self {
         let layer_count = layer_request_infos.len();
-        let mut layers : Vec<Layer> = Vec::with_capacity(layer_count);
+        let mut layers : Array1<Layer> = Array1::default(layer_request_infos.len());
 
         let mut column_size: usize = a0_matrix.ncols() + 1;
         for layer_index in 0..layer_count {
@@ -30,27 +30,24 @@ impl SequentialModel {
                 (column_size, unit_count + 1)
             );
 
-            layers.push(
-                Layer::new(array2, layer_request_infos[layer_index].activation)
-            );
+            layers[layer_index] = Layer::new(array2, layer_request_infos[layer_index].activation);
 
             column_size = unit_count + 1;
         }
 
         let mut a_matrices: Array1<Array2<f64>> = Array1::default(layer_count);
         let mut a0_new_matrix: Array2<f64> = Array2::ones(
-            (a0_matrix.nrows(), column_size)
+            (a0_matrix.nrows(), a0_matrix.ncols() + 1)
         );
-        a0_new_matrix.slice_mut(s![.., ..(column_size - 1)]).assign(a0_matrix);
+        a0_new_matrix.slice_mut(s![.., ..a0_matrix.ncols()]).assign(a0_matrix);
         a_matrices[0] = a0_new_matrix;
 
         Self { layers, layer_count, a_matrices }
     }
 
-    ///a_matrices will always add 1 column. Because matrix multiplication and derivative shortly.
-    ///a0_matrix should have (feature_size + 1) column.
+    ///Model will always add 1 column a_matrices. Because matrix multiplication and derivative shortly.
     pub fn generate_sequential_model_with_layers(
-        layers: Vec<Layer>,
+        layers: Array1<Layer>,
         a0_matrix: &Array2<f64>,
     ) -> Self {
         let n0 = a0_matrix.ncols();
@@ -68,7 +65,7 @@ impl SequentialModel {
     }
 
     pub fn train_model(
-        &self,
+        &mut self,
         loop_count: usize,
         learning_rate: f64
     ) {
@@ -96,18 +93,16 @@ impl SequentialModel {
     ) -> f64 {
         let mut result : f64 = 0.0;
         let m: usize = self.a_matrices[0].nrows();
+
+        let z_array_column: Array1<f64>
+            = self.layers[layer_index + 1]
+            .get_z_matrix_linear_output(&self.a_matrices[layer_index + 1]).column(unit_index)
+            .to_owned();
+
+        let mut unit_sum: f64 = 0.;
         for i in 0..m {
-            let mut unit_sum: f64 = 0.;
-            let z_array_column: Array1<f64>
-                = self.layers[layer_index + 1]
-                .get_z_matrix_linear_output(&self.a_matrices[layer_index + 1]).column(unit_index)
-                .to_owned();
-
-            for i_inside in 0..m {
-                unit_sum += z_array_column[i_inside]
-            }
+            unit_sum += z_array_column[i];
             result += self.a_matrices[layer_index][[i,j]] * (unit_sum- y_array[i]);
-
         }
 
         result * 2. / (m as f64)
@@ -174,10 +169,11 @@ impl SequentialModel {
         (real_output - 1.) * (1. - predict).ln() - real_output * predict.ln()
     }
 
-    fn predict_array_for_learning(&mut self) -> Array1<f64> {
+    pub fn predict_array_for_learning(&mut self) -> Array1<f64> {
         let mut a_previous_matrix: Array2<f64> = self.a_matrices[0].clone();
         for layer_index in 0..self.layer_count {
             a_previous_matrix = self.layers[layer_index].build_a_next(a_previous_matrix);
+            self.a_matrices[layer_index + 1] = a_previous_matrix.clone();
         }
 
         a_previous_matrix.column(0).to_owned()
@@ -194,12 +190,21 @@ impl SequentialModel {
         summary
     }
 
-    pub fn get_layers(&self) -> &Vec<Layer> {
+    pub fn get_layers(&self) -> &Array1<Layer> {
         &self.layers
     }
 
-    fn validate_layers(layers: &Vec<Layer>, sample_feature_size: usize,) {
+    pub fn get_a0_matrix(&self) -> Array2<f64> {
+        self.a_matrices[0].clone()
+    }
+
+    fn validate_layers(layers: &Array1<Layer>, sample_feature_size: usize,) {
         let layer_count = layers.len();
+
+        if layer_count < 1 {
+            panic!("Model should have at least one layer");
+        }
+
         Self::first_layer_row_size_and_a0_feature_size_validate(&layers[0], sample_feature_size);
 
         let mut layer_previous_column_size: usize = layers[0].get_matrix().ncols();
