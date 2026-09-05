@@ -2,5 +2,13 @@
 name = "neuralflow"
 version = "0.1.0"
 edition = "2024"
+description = "Neural Network util lib for Rust. (Continue to development)"
+license = "Apache-2.0"
+repository = "https://github.com/alibozlak/neuralflow"
+readme = "README.md"
+keywords = ["neural-network", "machine-learning", "deep-learning"]
+categories = ["science"]
+exclude = ["assets/", "*.png"]
 
 [dependencies]
+ndarray = "0.17.2"
