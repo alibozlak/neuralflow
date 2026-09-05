@@ -6,18 +6,24 @@ use crate::layer_request_info::LayerRequestInfo;
 pub struct SequentialModel {
     layers : Vec<Layer>,
     layer_count : usize,
-    a_output_matrices: Array1<Array2<f64>>,
+
+    ///a_matrices will always add 1 column. Because matrix multiplication and derivative shortly.
+    ///Model will add 1 column inside ones to a_matrices.
+    a_matrices: Array1<Array2<f64>>
 }
 
 impl SequentialModel {
+
+    ///a_matrices will always add 1 column. Because matrix multiplication and derivative shortly.
+    ///Model will add 1 column inside ones to a_matrices.
     pub fn new(
-        sample_feature_size: usize,
         layer_request_infos: &Vec<LayerRequestInfo>,
+        a0_matrix: &Array2<f64>,
     ) -> Self {
         let layer_count = layer_request_infos.len();
         let mut layers : Vec<Layer> = Vec::with_capacity(layer_count);
 
-        let mut column_size: usize = sample_feature_size + 1;
+        let mut column_size: usize = a0_matrix.ncols() + 1;
         for layer_index in 0..layer_count {
             let unit_count = layer_request_infos[layer_index].unit_count;
             let array2: Array2<f64> = Array2::zeros(
@@ -31,22 +37,38 @@ impl SequentialModel {
             column_size = unit_count + 1;
         }
 
-        let a_output_matrices: Array1<Array2<f64>> = Array1::default(layer_count);
+        let mut a_matrices: Array1<Array2<f64>> = Array1::default(layer_count);
+        let mut a0_new_matrix: Array2<f64> = Array2::ones(
+            (a0_matrix.nrows(), column_size)
+        );
+        a0_new_matrix.slice_mut(s![.., ..(column_size - 1)]).assign(a0_matrix);
+        a_matrices[0] = a0_new_matrix;
 
-        Self { layers, layer_count, a_output_matrices }
+        Self { layers, layer_count, a_matrices }
     }
 
-    pub fn generate_sequential_model_with_layers(layers: Vec<Layer>, sample_feature_size: usize,) -> Self {
-        Self::validate_layers(&layers, sample_feature_size);
+    ///a_matrices will always add 1 column. Because matrix multiplication and derivative shortly.
+    ///a0_matrix should have (feature_size + 1) column.
+    pub fn generate_sequential_model_with_layers(
+        layers: Vec<Layer>,
+        a0_matrix: &Array2<f64>,
+    ) -> Self {
+        let n0 = a0_matrix.ncols();
+        Self::validate_layers(&layers, n0);
+
+        let mut a0_new_matrix: Array2<f64> = Array2::ones(
+            (a0_matrix.nrows(), n0 + 1)
+        );
+        a0_new_matrix.slice_mut(s![.., ..n0]).assign(a0_matrix);
 
         let layer_count = layers.len();
-        let a_output_matrices: Array1<Array2<f64>> = Array1::default(layer_count);
-        Self { layers, layer_count, a_output_matrices }
+        let mut a_matrices: Array1<Array2<f64>> = Array1::default(layer_count + 1);
+        a_matrices[0] = a0_new_matrix;
+        Self { layers, layer_count, a_matrices }
     }
 
     pub fn train_model(
         &self,
-        a0_matrix: &Array2<f64>,
         loop_count: usize,
         learning_rate: f64
     ) {
@@ -65,37 +87,37 @@ impl SequentialModel {
     }
 
     ///unit_index == layer_column_size - 1.
-    fn layer_inside_linear_function_derivative(
+    fn layer_inside_linear_function_derivative_j(
         &self,
         layer_index: usize,
         unit_index: usize,
         j: usize,
-        a0_matrix: &Array2<f64>,
         y_array: &Array1<f64>,
     ) -> f64 {
         let mut result : f64 = 0.0;
-        let m: usize = a0_matrix.nrows();
+        let m: usize = self.a_matrices[0].nrows();
         for i in 0..m {
             let mut unit_sum: f64 = 0.;
-            if layer_index == 0 {
-                let z_array_column: Array1<f64>
-                    = self.layers[layer_index].get_z_matrix_linear_output(&a0_matrix).column(unit_index).to_owned();
+            let z_array_column: Array1<f64>
+                = self.layers[layer_index + 1]
+                .get_z_matrix_linear_output(&self.a_matrices[layer_index + 1]).column(unit_index)
+                .to_owned();
 
-                for i_inside in 0..m {
-                    unit_sum += z_array_column[i_inside]
-                }
+            for i_inside in 0..m {
+                unit_sum += z_array_column[i_inside]
             }
-            result += a0_matrix[[i,j]] * (unit_sum- y_array[i]);
+            result += self.a_matrices[layer_index][[i,j]] * (unit_sum- y_array[i]);
+
         }
 
         result * 2. / (m as f64)
     }
 
     ///Last layer critical layer for cost !!
-    pub fn cost(&self, a0_matrix: &Array2<f64>, outputs: &Array1<f64>) -> f64 {
+    pub fn cost(&mut self, outputs: &Array1<f64>) -> f64 {
         let result: f64 ;
 
-        let predict_array: Array1<f64> = self.predict_array_for_learning(a0_matrix);
+        let predict_array: Array1<f64> = self.predict_array_for_learning();
         match self.layers[self.layer_count - 1].get_activation_function() {
             Activation::Sigmoid => {
                 result = Self::get_mean_loss(&predict_array, outputs,)
@@ -131,10 +153,10 @@ impl SequentialModel {
         cost / array_length as f64
     }
 
-    pub fn loss(&self, input_sample: &Array1<f64>, output: f64) -> f64 {
+    pub fn loss(&mut self, output: f64) -> f64 {
         let result : f64;
 
-        let predict = self.predict(input_sample);
+        let predict = self.predict_array_for_learning()[0];
         match self.layers[self.layer_count - 1].get_activation_function() {
             Activation::Sigmoid => {
                 result = Self::loss_for_sigmoid(predict, output);
@@ -152,28 +174,13 @@ impl SequentialModel {
         (real_output - 1.) * (1. - predict).ln() - real_output * predict.ln()
     }
 
-    fn predict_array_for_learning(&self, a0_matrix: &Array2<f64>) -> Array1<f64> {
-        let feature_size = Self::first_layer_row_size_and_a0_feature_size_validate(
-            &self.layers[0], a0_matrix.ncols()
-        );
-
-        let mut a_previous_matrix: Array2<f64> = Array2::ones(
-            (a0_matrix.nrows(), feature_size+1)
-        );
-        a_previous_matrix.slice_mut(s![.., ..feature_size]).assign(a0_matrix);
+    fn predict_array_for_learning(&mut self) -> Array1<f64> {
+        let mut a_previous_matrix: Array2<f64> = self.a_matrices[0].clone();
         for layer_index in 0..self.layer_count {
-            a_previous_matrix =
-                self.layers[layer_index].build_a_next(a_previous_matrix);
+            a_previous_matrix = self.layers[layer_index].build_a_next(a_previous_matrix);
         }
 
         a_previous_matrix.column(0).to_owned()
-    }
-
-    pub fn predict(&self, input: &Array1<f64>) -> f64 {
-        let mut input_matrix: Array2<f64> = Array2::zeros((1, input.len()));
-        input_matrix.row_mut(0).assign(input);
-
-        self.predict_array_for_learning(&input_matrix)[0]
     }
 
     pub fn summary(&self) -> String {
