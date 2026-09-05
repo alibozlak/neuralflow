@@ -21,7 +21,7 @@ impl SequentialModel {
         a0_matrix: &Array2<f64>,
     ) -> Self {
         let layer_count = layer_request_infos.len();
-        let mut layers : Array1<Layer> = Array1::default(layer_request_infos.len());
+        let mut layers : Array1<Layer> = Array1::from_vec(Vec::with_capacity(layer_count));
 
         let mut column_size: usize = a0_matrix.ncols() + 1;
         for layer_index in 0..layer_count {
@@ -35,7 +35,7 @@ impl SequentialModel {
             column_size = unit_count + 1;
         }
 
-        let mut a_matrices: Array1<Array2<f64>> = Array1::default(layer_count);
+        let mut a_matrices: Array1<Array2<f64>> = Array1::default(layer_count + 1);
         let mut a0_new_matrix: Array2<f64> = Array2::ones(
             (a0_matrix.nrows(), a0_matrix.ncols() + 1)
         );

@@ -1,7 +1,6 @@
 use ndarray::{ Array2 };
 use crate::activation::Activation;
 
-#[derive(Default)]
 pub struct Layer {
 
     /// Weights fill column step column.
