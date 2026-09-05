@@ -21,6 +21,8 @@ impl SequentialModel {
         a0_matrix: &Array2<f64>,
     ) -> Self {
         let layer_count = layer_request_infos.len();
+        Self::model_should_have_at_least_one_layer(layer_count);
+        
         let mut layers : Array1<Layer> = Array1::from_vec(Vec::with_capacity(layer_count));
 
         let mut column_size: usize = a0_matrix.ncols() + 1;
@@ -201,9 +203,7 @@ impl SequentialModel {
     fn validate_layers(layers: &Array1<Layer>, sample_feature_size: usize,) {
         let layer_count = layers.len();
 
-        if layer_count < 1 {
-            panic!("Model should have at least one layer");
-        }
+        Self::model_should_have_at_least_one_layer(layer_count);
 
         Self::first_layer_row_size_and_a0_feature_size_validate(&layers[0], sample_feature_size);
 
@@ -225,6 +225,12 @@ impl SequentialModel {
         }
 
         a0_feature_count
+    }
+
+    fn model_should_have_at_least_one_layer(layer_count: usize) {
+        if layer_count < 1 {
+            panic!("Model should have at least one layer");
+        }
     }
 
 
