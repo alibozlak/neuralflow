@@ -40,7 +40,7 @@ impl SequentialModel {
         Self { layers, layer_count }
     }
 
-    fn train_model(
+    pub fn train_model(
         &mut self,
         a0_matrix : &Array2<f64>,
         outputs: &Array1<f64>,
@@ -48,10 +48,11 @@ impl SequentialModel {
         loop_count_for_each_unit: usize
     ) {
         let mut a_output_matrices: Vec<Array2<f64>> = Vec::with_capacity(self.layer_count);
-        a_output_matrices.push(Self::build_a_next(&self.layers[0], a0_matrix.clone()));
+        let a0_new_matrix = Self::add_ones_column_to_a0_matrix(a0_matrix);
+        a_output_matrices.push(Self::build_a_next(&self.layers[0], &a0_new_matrix));
         for layer_index in 1..self.layer_count {
             a_output_matrices.push(
-                Self::build_a_next(&self.layers[layer_index], a_output_matrices[layer_index -1].clone())
+                Self::build_a_next(&self.layers[layer_index], &a_output_matrices[layer_index -1].clone())
             )
         }
 
@@ -63,13 +64,13 @@ impl SequentialModel {
             }
 
             let first_layer_row_count_minus_1 = layers[0].get_matrix().nrows() - 1;
-            let model_for_training: SequentialModel =
+            let mut model_for_training: SequentialModel =
                 Self::generate_sequential_model_with_layers(layers, first_layer_row_count_minus_1);
 
             let mut first_layer_of_model: Layer = model_for_training.layers[0].clone();
             let unit_count = first_layer_of_model.get_matrix().ncols() - 1;
-            let weight_and_bias_count = first_layer_of_model.get_matrix().nrows() / unit_count;
-            let mut a0_matrix_for_model = a0_matrix;
+            let weight_and_bias_count = first_layer_of_model.get_matrix().nrows();
+            let mut a0_matrix_for_model = &a0_new_matrix;
             if layer_index_from_end != 0 {
                 a0_matrix_for_model = &a_output_matrices[layer_index_from_end - 1];
             }
@@ -84,7 +85,7 @@ impl SequentialModel {
                         let m = a0_matrix_for_model.nrows();
                         for i in 0..m {
                             partial_derivative += a0_matrix_for_model[[i, w_index]] *
-                                (self.predict(&a0_matrix_for_model.row(i).to_owned()) - outputs[i])
+                                (model_for_training.predict(&a0_matrix_for_model.row(i).to_owned()) - outputs[i])
                         }
                         partial_derivative = partial_derivative / m as f64;
 
@@ -93,13 +94,12 @@ impl SequentialModel {
 
                         new_weights[w_index] = new_weight;
                     }
-                    first_layer_of_model.get_mut_matrix().column_mut(unit_index).assign(&new_weights);
+                    model_for_training.layers[layer_index_from_end].get_mut_matrix()
+                        .column_mut(unit_index).assign(&new_weights);
                 }
-
-                self.layers[layer_index_from_end].get_mut_matrix().column_mut(unit_index).assign(
-                    &first_layer_of_model.get_mut_matrix().column_mut(unit_index)
-                )
             }
+
+            self.layers[layer_index_from_end] = model_for_training.layers[0].clone();
         }
     }
 
@@ -163,16 +163,13 @@ impl SequentialModel {
     }
 
     fn predict_array(&self, a0_matrix: &Array2<f64>) -> Array1<f64> {
-        let feature_size = Self::first_layer_row_size_and_a0_feature_size_validate(
+        Self::first_layer_row_size_and_a0_feature_size_validate(
             &self.layers[0], a0_matrix.ncols()
         );
 
-        let mut a_previous_matrix: Array2<f64> = Array2::ones(
-            (a0_matrix.nrows(), feature_size+1)
-        );
-        a_previous_matrix.slice_mut(s![.., ..feature_size]).assign(a0_matrix);
+        let mut a_previous_matrix: Array2<f64> = Self::add_ones_column_to_a0_matrix(a0_matrix);
         for layer_index in 0..self.layer_count {
-            a_previous_matrix = Self::build_a_next(&self.layers[layer_index], a_previous_matrix);
+            a_previous_matrix = Self::build_a_next(&self.layers[layer_index], &a_previous_matrix);
         }
 
         a_previous_matrix.column(0).to_owned()
@@ -186,7 +183,7 @@ impl SequentialModel {
         self.predict_array(&input_matrix)[0]
     }
 
-    fn build_a_next(layer: &Layer, a_previous: Array2<f64>) -> Array2<f64> {
+    fn build_a_next(layer: &Layer, a_previous: &Array2<f64>) -> Array2<f64> {
         let z_matrix_linear_output = &a_previous.dot(layer.get_matrix());
         let mut a_next: Array2<f64>
             = z_matrix_linear_output.mapv(|z_ij| layer.get_activation_function().apply(z_ij));
@@ -194,6 +191,15 @@ impl SequentialModel {
         let column_size = a_next.ncols();
         a_next.column_mut(column_size - 1).fill(1.);
         a_next
+    }
+
+    fn add_ones_column_to_a0_matrix(a0_matrix: &Array2<f64>) -> Array2<f64> {
+        let feature_size: usize = a0_matrix.ncols();
+        let mut a0_new: Array2<f64> = Array2::ones(
+            (a0_matrix.nrows(), feature_size+1)
+        );
+        a0_new.slice_mut(s![.., ..feature_size]).assign(a0_matrix);
+        a0_new
     }
 
     pub fn summary(&self) -> String {
