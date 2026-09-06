@@ -82,9 +82,13 @@ impl SequentialModel {
                     for w_index in 0..weight_and_bias_count {
                         let mut partial_derivative: f64 = 0.0;
                         let m = a0_matrix_for_model.nrows();
+                        let a0_matrix_for_model_without_last_column: Array2<f64>
+                            = a0_matrix_for_model.slice(s![.., ..-1]).to_owned();
                         for i in 0..m {
-                            partial_derivative += a0_matrix_for_model[[i, w_index]] *
-                                (model_for_training.predict(&a0_matrix.row(i).to_owned()) - outputs[i])
+                            partial_derivative += a0_matrix_for_model[[i, w_index]] * (
+                                model_for_training.predict(&a0_matrix_for_model_without_last_column.row(i).to_owned())
+                                    - outputs[i]
+                                )
                         }
                         partial_derivative = partial_derivative / m as f64;
 
