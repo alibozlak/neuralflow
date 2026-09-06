@@ -40,11 +40,74 @@ impl SequentialModel {
         Self { layers, layer_count }
     }
 
+    fn train_model(
+        &mut self,
+        a0_matrix : &Array2<f64>,
+        outputs: &Array1<f64>,
+        learning_rate: f64,
+        loop_count_for_each_unit: usize
+    ) {
+        let mut a_output_matrices: Vec<Array2<f64>> = Vec::with_capacity(self.layer_count);
+        a_output_matrices.push(Self::build_a_next(&self.layers[0], a0_matrix.clone()));
+        for layer_index in 1..self.layer_count {
+            a_output_matrices.push(
+                Self::build_a_next(&self.layers[layer_index], a_output_matrices[layer_index -1].clone())
+            )
+        }
+
+        for layer_index_from_end in (0..self.layer_count).rev() {
+            let how_many_layers = self.layer_count - layer_index_from_end;
+            let mut layers: Vec<Layer> = Vec::with_capacity(how_many_layers);
+            for layer_index in layer_index_from_end..self.layer_count {
+                layers.push(self.layers[layer_index].clone());
+            }
+
+            let first_layer_row_count_minus_1 = layers[0].get_matrix().nrows() - 1;
+            let model_for_training: SequentialModel =
+                Self::generate_sequential_model_with_layers(layers, first_layer_row_count_minus_1);
+
+            let mut first_layer_of_model: Layer = model_for_training.layers[0].clone();
+            let unit_count = first_layer_of_model.get_matrix().ncols() - 1;
+            let weight_and_bias_count = first_layer_of_model.get_matrix().nrows() / unit_count;
+            let mut a0_matrix_for_model = a0_matrix;
+            if layer_index_from_end != 0 {
+                a0_matrix_for_model = &a_output_matrices[layer_index_from_end - 1];
+            }
+
+
+            for unit_index in 0..unit_count {
+                let mut new_weights: Array1<f64> = Array1::ones(first_layer_of_model.get_matrix().nrows());
+
+                for _ in 0..loop_count_for_each_unit {
+                    for w_index in 0..weight_and_bias_count {
+                        let mut partial_derivative: f64 = 0.0;
+                        let m = a0_matrix_for_model.nrows();
+                        for i in 0..m {
+                            partial_derivative += a0_matrix_for_model[[i, w_index]] *
+                                (self.predict(&a0_matrix_for_model.row(i).to_owned()) - outputs[i])
+                        }
+                        partial_derivative = partial_derivative / m as f64;
+
+                        let new_weight: f64 =
+                            first_layer_of_model.get_matrix()[[w_index, unit_index]] - learning_rate * partial_derivative;
+
+                        new_weights[w_index] = new_weight;
+                    }
+                    first_layer_of_model.get_mut_matrix().column_mut(unit_index).assign(&new_weights);
+                }
+
+                self.layers[layer_index_from_end].get_mut_matrix().column_mut(unit_index).assign(
+                    &first_layer_of_model.get_mut_matrix().column_mut(unit_index)
+                )
+            }
+        }
+    }
+
     ///Last layer critical layer for cost !!
     pub fn cost(&self, a0_matrix: &Array2<f64>, outputs: &Array1<f64>) -> f64 {
         let result: f64 ;
 
-        let predict_array: Array1<f64> = self.predict_array_for_learning(a0_matrix);
+        let predict_array: Array1<f64> = self.predict_array(a0_matrix);
         match self.layers[self.layer_count - 1].get_activation_function() {
             Activation::Sigmoid => {
                 result = Self::get_mean_loss(&predict_array, outputs,)
@@ -67,9 +130,7 @@ impl SequentialModel {
         sum_loss / (array_length as f64)
     }
 
-    ///My Cost Function definition : Divided by sample size, Not (sample_size * 2) !!
-    /// Source :
-    /// https://github.com/alibozlak/multivariable_linear_regression/blob/master/math/001_dJ_daj_partial_derivative.pdf
+    ///Cost Function definition convert from mine to Andrew Ng's definition. For derivative reasoning
     fn get_cost_for_linear_activation(predicted_array: &Array1<f64>, real_outputs: &Array1<f64>) -> f64 {
         let array_length = predicted_array.len();
         let mut cost: f64 = 0.;
@@ -77,7 +138,7 @@ impl SequentialModel {
             cost += (predicted_array[i] - real_outputs[i]).powi(2);
         }
 
-        cost / array_length as f64
+        cost / (2. * array_length as f64)
     }
 
     pub fn loss(&self, input_sample: &Array1<f64>, output: f64) -> f64 {
@@ -101,7 +162,7 @@ impl SequentialModel {
         (real_output - 1.) * (1. - predict).ln() - real_output * predict.ln()
     }
 
-    fn predict_array_for_learning(&self, a0_matrix: &Array2<f64>) -> Array1<f64> {
+    fn predict_array(&self, a0_matrix: &Array2<f64>) -> Array1<f64> {
         let feature_size = Self::first_layer_row_size_and_a0_feature_size_validate(
             &self.layers[0], a0_matrix.ncols()
         );
@@ -117,11 +178,12 @@ impl SequentialModel {
         a_previous_matrix.column(0).to_owned()
     }
 
+    ///This is model's f function
     pub fn predict(&self, input: &Array1<f64>) -> f64 {
         let mut input_matrix: Array2<f64> = Array2::zeros((1, input.len()));
         input_matrix.row_mut(0).assign(input);
 
-        self.predict_array_for_learning(&input_matrix)[0]
+        self.predict_array(&input_matrix)[0]
     }
 
     fn build_a_next(layer: &Layer, a_previous: Array2<f64>) -> Array2<f64> {

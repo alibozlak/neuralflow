@@ -3,28 +3,28 @@ use std::str::FromStr;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Activation {
+
     Sigmoid,
+
     Linear,
+
+    ///Don't recommend using Output Layer (Derivative problem) !!
+    ///Andrew Ng recommends Hidden Layers
     ReLU,
 }
 
 impl Activation {
     pub fn apply(self, z: f64) -> f64 {
-        let mut result: f64 = 1.0;
+        let result: f64;
 
-        if self == Self::Sigmoid {
-            result = 1. / (1. + (-z).exp());
-        } else if self == Self::Linear {
-            result = z;
-        } else if self == Self::ReLU {
-            result = f64::max(z, 0.);
+        match self {
+            Activation::Sigmoid => { result = 1. / (1. + (-z).exp()); },
+            Activation::Linear => { result = z; },
+            Activation::ReLU => { result = f64::max(z, 0.); },
         }
 
         result
     }
-
-    // pub fn derivative(self, x: f64) -> f64 {
-    // }
 }
 
 impl fmt::Display for Activation {

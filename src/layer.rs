@@ -1,6 +1,7 @@
 use ndarray::{ Array2 };
 use crate::activation::Activation;
 
+#[derive(Clone)]
 pub struct Layer {
 
     /// Weights fill column step column.
@@ -28,6 +29,10 @@ impl Layer {
     /// unit_count + 1 : for a_next (layer output)
     pub fn get_matrix(&self) -> &Array2<f64> {
         &self.matrix
+    }
+
+    pub fn get_mut_matrix(&mut self) -> &mut Array2<f64> {
+        &mut self.matrix
     }
 
     pub fn get_activation_function(&self) -> Activation {
