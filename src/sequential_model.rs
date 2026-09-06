@@ -14,6 +14,8 @@ impl SequentialModel {
         layer_request_infos: &Vec<LayerRequestInfo>,
     ) -> Self {
         let layer_count = layer_request_infos.len();
+        Self::last_layer_should_have_only_one_unit(layer_request_infos[layer_count - 1].unit_count);
+
         let mut layers : Vec<Layer> = Vec::with_capacity(layer_count);
 
         let mut column_size: usize = sample_feature_size + 1;
@@ -34,6 +36,7 @@ impl SequentialModel {
     }
 
     pub fn generate_sequential_model_with_layers(layers: Vec<Layer>, sample_feature_size: usize,) -> Self {
+        Self::last_layer_should_have_only_one_unit(layers[layers.len() - 1].get_matrix().ncols() - 1);
         Self::validate_layers(&layers, sample_feature_size);
 
         let layer_count = layers.len();
@@ -47,6 +50,9 @@ impl SequentialModel {
         learning_rate: f64,
         loop_count_for_each_unit: usize
     ) {
+        Self::a0_matrix_row_count_and_output_array_size_should_same(a0_matrix.nrows(), outputs.len());
+        Self::first_layer_row_size_and_a0_feature_size_validate(&self.layers[0], a0_matrix.ncols());
+
         let mut a_output_matrices: Vec<Array2<f64>> = Vec::with_capacity(self.layer_count);
         let a0_new_matrix = Self::add_ones_column_to_a0_matrix(a0_matrix);
         a_output_matrices.push(Self::build_a_next(&self.layers[0], &a0_new_matrix));
@@ -88,7 +94,7 @@ impl SequentialModel {
                             partial_derivative += a0_matrix_for_model[[i, w_index]] * (
                                 model_for_training.predict(&a0_matrix_for_model_without_last_column.row(i).to_owned())
                                     - outputs[i]
-                                )
+                            )
                         }
                         partial_derivative = partial_derivative / m as f64;
 
@@ -107,6 +113,9 @@ impl SequentialModel {
 
     ///Last layer critical layer for cost !!
     pub fn cost(&self, a0_matrix: &Array2<f64>, outputs: &Array1<f64>) -> f64 {
+        Self::a0_matrix_row_count_and_output_array_size_should_same(a0_matrix.nrows(), outputs.len());
+        Self::first_layer_row_size_and_a0_feature_size_validate(&self.layers[0], a0_matrix.ncols());
+
         let result: f64 ;
 
         let predict_array: Array1<f64> = self.predict_array(a0_matrix);
@@ -237,6 +246,18 @@ impl SequentialModel {
     {
         if layer_first.get_matrix().nrows() != a0_feature_count + 1 {
             panic!("a0_column_size and first layer row count mismatch !!");
+        }
+    }
+
+    fn a0_matrix_row_count_and_output_array_size_should_same(row_count: usize, output_array_size: usize) {
+        if row_count != output_array_size {
+            panic!("Input matrix (a0_matrix) row count and output_array size should same !!")
+        }
+    }
+
+    fn last_layer_should_have_only_one_unit(last_layer_unit_count: usize) {
+        if last_layer_unit_count != 1 {
+            panic!("last_layer_unit_count should have only 1 unit !!");
         }
     }
 
