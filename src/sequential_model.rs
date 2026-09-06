@@ -73,6 +73,8 @@ impl SequentialModel {
             if layer_index_from_end != 0 {
                 a0_matrix_for_model = &a_output_matrices[layer_index_from_end - 1];
             }
+            let a0_matrix_for_model_without_last_column: Array2<f64>
+                = a0_matrix_for_model.slice(s![.., ..-1]).to_owned();
 
 
             for unit_index in 0..unit_count {
@@ -82,8 +84,6 @@ impl SequentialModel {
                     for w_index in 0..weight_and_bias_count {
                         let mut partial_derivative: f64 = 0.0;
                         let m = a0_matrix_for_model.nrows();
-                        let a0_matrix_for_model_without_last_column: Array2<f64>
-                            = a0_matrix_for_model.slice(s![.., ..-1]).to_owned();
                         for i in 0..m {
                             partial_derivative += a0_matrix_for_model[[i, w_index]] * (
                                 model_for_training.predict(&a0_matrix_for_model_without_last_column.row(i).to_owned())
@@ -100,9 +100,8 @@ impl SequentialModel {
                     }
                     model_for_training.layers[0].get_mut_matrix().column_mut(unit_index).assign(&new_weights);
                 }
-
-                self.layers[layer_index_from_end] = model_for_training.layers[0].clone();
             }
+            self.layers[layer_index_from_end] = model_for_training.layers[0].clone();
         }
     }
 
