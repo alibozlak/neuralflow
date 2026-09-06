@@ -100,9 +100,9 @@ impl SequentialModel {
                     }
                     model_for_training.layers[0].get_mut_matrix().column_mut(unit_index).assign(&new_weights);
                 }
-            }
 
-            self.layers[layer_index_from_end] = model_for_training.layers[0].clone();
+                self.layers[layer_index_from_end] = model_for_training.layers[0].clone();
+            }
         }
     }
 
