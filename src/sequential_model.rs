@@ -52,7 +52,7 @@ impl SequentialModel {
         a_output_matrices.push(Self::build_a_next(&self.layers[0], &a0_new_matrix));
         for layer_index in 1..self.layer_count {
             a_output_matrices.push(
-                Self::build_a_next(&self.layers[layer_index], &a_output_matrices[layer_index -1].clone())
+                Self::build_a_next(&self.layers[layer_index], &a_output_matrices[layer_index -1])
             )
         }
 
@@ -66,10 +66,9 @@ impl SequentialModel {
             let first_layer_row_count_minus_1 = layers[0].get_matrix().nrows() - 1;
             let mut model_for_training: SequentialModel =
                 Self::generate_sequential_model_with_layers(layers, first_layer_row_count_minus_1);
-
-            let mut first_layer_of_model: Layer = model_for_training.layers[0].clone();
-            let unit_count = first_layer_of_model.get_matrix().ncols() - 1;
-            let weight_and_bias_count = first_layer_of_model.get_matrix().nrows();
+            
+            let unit_count = model_for_training.layers[0].get_matrix().ncols() - 1;
+            let weight_and_bias_count = model_for_training.layers[0].get_matrix().nrows();
             let mut a0_matrix_for_model = &a0_new_matrix;
             if layer_index_from_end != 0 {
                 a0_matrix_for_model = &a_output_matrices[layer_index_from_end - 1];
@@ -77,7 +76,7 @@ impl SequentialModel {
 
 
             for unit_index in 0..unit_count {
-                let mut new_weights: Array1<f64> = Array1::ones(first_layer_of_model.get_matrix().nrows());
+                let mut new_weights: Array1<f64> = Array1::ones(model_for_training.layers[0].get_matrix().nrows());
 
                 for _ in 0..loop_count_for_each_unit {
                     for w_index in 0..weight_and_bias_count {
@@ -85,17 +84,17 @@ impl SequentialModel {
                         let m = a0_matrix_for_model.nrows();
                         for i in 0..m {
                             partial_derivative += a0_matrix_for_model[[i, w_index]] *
-                                (model_for_training.predict(&a0_matrix_for_model.row(i).to_owned()) - outputs[i])
+                                (model_for_training.predict(&a0_matrix.row(i).to_owned()) - outputs[i])
                         }
                         partial_derivative = partial_derivative / m as f64;
 
                         let new_weight: f64 =
-                            first_layer_of_model.get_matrix()[[w_index, unit_index]] - learning_rate * partial_derivative;
+                            model_for_training.layers[0].get_matrix()[[w_index, unit_index]] -
+                                learning_rate * partial_derivative;
 
                         new_weights[w_index] = new_weight;
                     }
-                    model_for_training.layers[layer_index_from_end].get_mut_matrix()
-                        .column_mut(unit_index).assign(&new_weights);
+                    model_for_training.layers[0].get_mut_matrix().column_mut(unit_index).assign(&new_weights);
                 }
             }
 
@@ -231,14 +230,11 @@ impl SequentialModel {
         }
     }
 
-    fn first_layer_row_size_and_a0_feature_size_validate(
-        layer_first: &Layer, a0_feature_count: usize
-    ) -> usize {
+    fn first_layer_row_size_and_a0_feature_size_validate(layer_first: &Layer, a0_feature_count: usize)
+    {
         if layer_first.get_matrix().nrows() != a0_feature_count + 1 {
             panic!("a0_column_size and first layer row count mismatch !!");
         }
-
-        a0_feature_count
     }
 
 
