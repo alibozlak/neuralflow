@@ -66,7 +66,7 @@ impl SequentialModel {
             let first_layer_row_count_minus_1 = layers[0].get_matrix().nrows() - 1;
             let mut model_for_training: SequentialModel =
                 Self::generate_sequential_model_with_layers(layers, first_layer_row_count_minus_1);
-            
+
             let unit_count = model_for_training.layers[0].get_matrix().ncols() - 1;
             let weight_and_bias_count = model_for_training.layers[0].get_matrix().nrows();
             let mut a0_matrix_for_model = &a0_new_matrix;
