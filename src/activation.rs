@@ -1,6 +1,7 @@
 use std::fmt;
 use std::str::FromStr;
 use safe_matmul::matrix::Matrix;
+use crate::matrix_ops::MatrixExt;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Activation {
@@ -11,6 +12,7 @@ pub enum Activation {
 
 impl Activation {
 
+    /// a = g(z)
     pub fn a(self, z: f64) -> f64 {
 
         match self {
@@ -20,63 +22,33 @@ impl Activation {
         }
     }
 
+    /// A = g(Z), element by element.
     pub fn a_with_matrix(self, z_matrix: &Matrix) -> Matrix {
-        let z_matrix_len: usize = z_matrix.row_count() * z_matrix.col_count();
-        let mut result_vector: Vec<f64> = Vec::with_capacity(z_matrix_len);
-
-        for i in 0..z_matrix.row_count() {
-            for j in 0..z_matrix.col_count() {
-                result_vector.push(self.a(z_matrix.get(i,j).unwrap()))
-            }
-        }
-        Matrix::from_vec(z_matrix.row_count(), z_matrix.col_count(), result_vector).unwrap()
+        z_matrix.map(|z| self.a(z))
     }
 
-    pub fn linear_func_z_matrix(self, samples_matrix: &Matrix, weight_matrix: &Matrix, bias_matrix: &Matrix) -> Matrix {
-        self.validate_matrices_shapes(weight_matrix, samples_matrix, bias_matrix);
-
-        weight_matrix.transpose_matmul(samples_matrix).unwrap()
-    }
-
-    pub fn z_matrix(self, samples_matrix: &Matrix, weight_matrix: &Matrix, bias_matrix: &Matrix) -> Matrix {
-        self.linear_func_z_matrix(samples_matrix, weight_matrix, bias_matrix)
-    }
-
-    pub fn linear_func_z(self, one_sample: &Matrix, weights: &Matrix, bias: f64) -> f64 {
-        self.validate_weight_and_samples_matrices_shapes(weights, one_sample);
-
-        if one_sample.col_count() != 1  || weights.col_count() != 1 {
-            panic!("weights and one sample matrices should have just 1 column !!")
-        }
-
-        weights.transpose_matmul(one_sample).unwrap().get(0,0).unwrap() + bias
-    }
-
-    pub fn z(self, one_sample: &Matrix, weights: &Matrix, bias: f64) -> f64 {
-        self.linear_func_z(one_sample, weights, bias)
-    }
-
-    pub fn validate_weight_and_samples_matrices_shapes(self, weight_matrix: &Matrix, samples_matrix: &Matrix) {
-        if weight_matrix.row_count() != samples_matrix.row_count() {
-            panic!("weight_matrix row count {} should be equal to samples_matrix row count {} !!",
-                   weight_matrix.row_count(), samples_matrix.row_count()
-            );
+    /// g'(z): backprop multiplies dA by this to get dZ.
+    pub fn derivative(self, z: f64) -> f64 {
+        match self {
+            Activation::Sigmoid => {
+                let a = self.a(z);
+                a * (1. - a)
+            },
+            Activation::Linear => 1.,
+            // ReLU has no slope at exactly 0; TensorFlow uses 0 there too.
+            Activation::ReLU => if z > 0. { 1. } else { 0. },
         }
     }
 
-    pub fn validate_matrices_shapes(self, weight_matrix: &Matrix, samples_matrix: &Matrix, bias_matrix: &Matrix) {
-        self.validate_weight_and_samples_matrices_shapes(weight_matrix, samples_matrix);
-
-        if weight_matrix.col_count() != bias_matrix.row_count() {
-            panic!("weight_matrix col_count should be equal bias_matrix row_count !!")
-        }
-
-        if samples_matrix.col_count() != weight_matrix.col_count() {
-            panic!("samples_matrix col_count should be equal bias_matrix col_count !!")
-        }
+    /// g'(Z), element by element.
+    pub fn derivative_with_matrix(self, z_matrix: &Matrix) -> Matrix {
+        z_matrix.map(|z| self.derivative(z))
     }
 
-
+    /// dZ = dA * g'(Z): backprop's step back through the activation.
+    pub fn dz_matrix(self, da_matrix: &Matrix, z_matrix: &Matrix) -> Matrix {
+        da_matrix.zip_map(&self.derivative_with_matrix(z_matrix), |da, slope| da * slope)
+    }
 }
 
 impl fmt::Display for Activation {
@@ -96,8 +68,41 @@ impl FromStr for Activation {
         match text {
             "Sigmoid" => Ok(Self::Sigmoid),
             "Linear" => Ok(Self::Linear),
-            // "ReLU" => Ok(Self::ReLU),
+            "ReLU" => Ok(Self::ReLU),
             other => Err(format!("unknown activation: {other}")),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_matches_the_formulas() {
+        assert_eq!(Activation::Sigmoid.a(0.), 0.5);
+        assert_eq!(Activation::Linear.a(-3.), -3.);
+        assert_eq!(Activation::ReLU.a(-3.), 0.);
+        assert_eq!(Activation::ReLU.a(3.), 3.);
+    }
+
+    /// g'(z) against the slope (g(z + h) - g(z - h)) / 2h.
+    #[test]
+    fn derivative_matches_the_numerical_slope() {
+        let h = 1e-6;
+        for activation in [Activation::Sigmoid, Activation::Linear, Activation::ReLU] {
+            // ReLU has a kink at 0, so stay away from it.
+            for z in [-2.5, -0.3, 0.7, 4.] {
+                let slope = (activation.a(z + h) - activation.a(z - h)) / (2. * h);
+                assert!((activation.derivative(z) - slope).abs() < 1e-6, "{activation} at z = {z}");
+            }
+        }
+    }
+
+    #[test]
+    fn matrix_versions_work_element_by_element() {
+        let z = Matrix::from_vec(2, 2, vec![-1., 0., 1., 2.]).unwrap();
+        assert_eq!(Activation::ReLU.a_with_matrix(&z).as_slice(), &[0., 0., 1., 2.]);
+        assert_eq!(Activation::ReLU.derivative_with_matrix(&z).as_slice(), &[0., 0., 1., 1.]);
     }
 }
