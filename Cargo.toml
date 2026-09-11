@@ -11,4 +11,4 @@ categories = ["science"]
 exclude = ["assets/", "*.png"]
 
 [dependencies]
-ndarray = "0.17.2"
+safe_matmul = "0.1.0"

@@ -1,33 +1,27 @@
-use ndarray::{ Array2 };
+
+use safe_matmul::matrix::Matrix;
 use crate::activation::Activation;
 
+#[derive(Clone)]
 pub struct Layer {
-
-    /// Weights fill column step column.
-    /// matrix shape = (weight_count + 1, unit_count + 1)
-    /// +1s for matrix multiplication :
-    /// weight_count + 1 : each unit's weights + bias,
-    /// unit_count + 1 : for a_next (layer output)
-    matrix: Array2<f64>,
-
+    weight_matrix: Matrix,
+    bias_matrix: Matrix,
     activation: Activation,
 }
 
 impl Layer {
     pub fn new(
-        matrix: Array2<f64>,
+        weight_matrix: Matrix,
+        bias_matrix: Matrix,
         activation: Activation,
     ) -> Self {
-        Self { matrix, activation }
+        Self::validate_weight_and_bias_matrices_shapes(&weight_matrix, &bias_matrix);
+
+        Self { weight_matrix, bias_matrix, activation }
     }
 
-    /// Weights fill column step column.
-    /// matrix shape = (weight_count + 1, unit_count + 1)
-    /// +1s for matrix multiplication :
-    /// weight_count + 1 : each unit's weights + bias,
-    /// unit_count + 1 : for a_next (layer output)
-    pub fn get_matrix(&self) -> &Array2<f64> {
-        &self.matrix
+    pub fn get_matrices(self) -> (Matrix, Matrix) {
+        (self.weight_matrix, self.bias_matrix)
     }
 
     pub fn get_activation_function(&self) -> Activation {
@@ -36,11 +30,19 @@ impl Layer {
 
     pub fn summary(&self) -> String {
         format!(
-            "Matrix shape = {}x{}, activation_func = {}",
-            self.matrix.shape()[0],
-            self.matrix.shape()[1],
+            "Matrices shapes = {}x{}, activation_func = {}",
+            self.weight_matrix.row_count(),
+            self.weight_matrix.col_count(),
             self.activation
         )
+    }
+
+    pub fn validate_weight_and_bias_matrices_shapes(weight_matrix: &Matrix, bias_matrix: &Matrix) {
+        if weight_matrix.row_count() != bias_matrix.row_count() ||
+            weight_matrix.col_count() != bias_matrix.col_count()
+        {
+            panic!("Weight matrix and Bias matrix must have the same shape !!")
+        }
     }
 
 
