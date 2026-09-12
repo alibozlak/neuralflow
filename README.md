@@ -40,7 +40,7 @@ Run the full example with `cargo run --example xor`.
 | `tf.random.set_seed(1234)` | `set_random_seed(1234)` |
 
 - Activations: `Sigmoid`, `Linear`, `ReLU`
-- Losses: `BinaryCrossentropy`, `MeanSquaredError` (Keras' definition, without Ng's 1/2) [Source](https://github.com/alibozlak/multivariable_linear_regression/blob/master/math/001_dJ_daj_partial_derivative.pdf)
+- Losses: `BinaryCrossentropy`, `MeanSquaredError` (Keras' definition, without Ng's 1/2) [Source: 3rd line](https://github.com/alibozlak/multivariable_linear_regression/blob/master/math/001_dJ_daj_partial_derivative.pdf)
 - Optimizers: `SGD`, `Adam`
 
 ### Matrix engine: `safe_matmul`
