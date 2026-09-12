@@ -9,6 +9,7 @@ pub mod optimizer;
 pub mod random;
 mod matrix_ops;
 pub mod column_based_scaling;
+pub mod onnx;
 
 /// Samples, targets and weights are all safe_matmul matrices. Re-exported so
 /// users don't need safe_matmul in their own Cargo.toml.
