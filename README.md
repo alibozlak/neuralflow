@@ -42,3 +42,41 @@ Run the full example with `cargo run --example xor`.
 - Activations: `Sigmoid`, `Linear`, `ReLU`
 - Losses: `BinaryCrossentropy`, `MeanSquaredError` (Keras' definition, without Ng's 1/2)
 - Optimizers: `SGD`, `Adam`
+
+### Matrix engine: `safe_matmul`
+
+This project uses [`safe_matmul`](https://crates.io/crates/safe_matmul) for all matrix
+work. Every matrix here is a `safe_matmul` `Matrix`: the samples `x`, the targets `y`,
+and the weights and biases of each layer. You do not need to add it to your own
+`Cargo.toml`, because neuralflow re-exports it.
+
+**The good side**
+
+- It is safe. The crate uses `#![forbid(unsafe_code)]`, so it has no `unsafe` code.
+- It has zero dependencies. There is no BLAS, no C compiler and no system library. So
+  builds are fast, and they also work offline.
+- It gives the three products that backpropagation needs: `A·B` for the forward pass,
+  `Aᵀ·B` for `dW`, and `A·Bᵀ` for the gradient of the input. It does not make a
+  transposed copy for the last two, so it saves time and memory.
+- A wrong shape returns a `Result` with an error. The program does not panic.
+
+**The bad side**
+
+- It is slower than a SIMD library like `matrixmultiply`. It is about 2x slower with
+  small matrices and about 4x slower with big ones.
+- It uses only one thread, and only `f64` numbers. There is no `f32` and no GPU.
+- It has no cache blocking, so big matrices become slow.
+- It is a small library. It has no broadcasting and no element-wise math, so neuralflow
+  writes its own helpers in [`src/matrix_ops.rs`](src/matrix_ops.rs).
+- The API is still young (version 0.1.0) and it can change.
+
+So neuralflow is good for learning and for small or medium models. For big and fast
+training, a library with BLAS or a GPU is a better choice.
+
+You can make `safe_matmul` faster on your own machine:
+
+```toml
+# .cargo/config.toml
+[build]
+rustflags = ["-C", "target-cpu=native"]
+```
