@@ -1,12 +1,12 @@
 [package]
 name = "neuralflow"
-version = "0.1.1"
+version = "0.1.2"
 edition = "2024"
-description = "Neural Network util lib for Rust. (Continue to development)"
+description = "Neural Network util lib for my AI projects. (Continue to development)"
 license = "Apache-2.0"
 repository = "https://github.com/alibozlak/neuralflow"
 readme = "README.md"
-keywords = ["neural-network", "machine-learning", "deep-learning"]
+keywords = ["neural-network", "machine-learning", "deep-learning", "onnx"]
 categories = ["science"]
 exclude = ["assets/", "*.png"]
 

@@ -1,6 +1,6 @@
 
 
-### Neural Network util lib for Rust. (Continue to development)
+### Neural Network util lib for my AI projects. (Continue to development)
 
 **Guide: Andrew Ng's courses**
 
@@ -38,10 +38,82 @@ Run the full example with `cargo run --example xor`.
 | `W, b = model.get_layer("layer1").get_weights()` | `let (w, b) = model.get_layer("layer1").get_weights();` |
 | `model.get_layer("layer1").set_weights([W, b])` | `model.get_layer_mut("layer1").set_weights(w, b)` |
 | `tf.random.set_seed(1234)` | `set_random_seed(1234)` |
+| `model.export("model.onnx", format="onnx")` | `model.export_onnx("model.onnx")?` |
 
 - Activations: `Sigmoid`, `Linear`, `ReLU`
 - Losses: `BinaryCrossentropy`, `MeanSquaredError` (Keras' definition, without Ng's 1/2) [Source: 3rd line](https://github.com/alibozlak/multivariable_linear_regression/blob/master/math/001_dJ_daj_partial_derivative.pdf)
 - Optimizers: `SGD`, `Adam`
+
+### Scaling the data: `column_based_scaling`
+
+Gradient descent has a hard time when one feature is counted in thousands and another
+one in tenths. [`column_based_scaling`](src/column_based_scaling.rs) divides every
+column by a power of ten, so the numbers come closer together:
+
+```rust
+use neuralflow::column_based_scaling::manipulate_datas_between_0_and_10;
+
+// x is (samples x features) and y is (samples x 1).
+let (scaled_x, scaled_y, ten_power_ratios) = manipulate_datas_between_0_and_10(x, y);
+```
+
+This is not Keras' `Normalization` layer, and it is worth knowing what it really does:
+
+- A column's power of ten comes from that column's **first row** only. A first value with
+  4 integer digits gives `10^3`, so the whole column is divided by 1000. The other rows
+  are never looked at, so a column whose first sample is much smaller or much bigger than
+  the rest gets the wrong scale.
+- `y` must have exactly one column, and both matrices are taken by value.
+- There is no inverse function. `ten_power_ratios` holds the exponent of every feature
+  column, and its last entry the exponent of `y`. So a prediction goes back to the
+  original scale by multiplying it with `10^` that last exponent.
+
+### Export to ONNX
+
+A trained model can be written as an [ONNX](https://onnx.ai) file. The file holds the
+graph and every weight, so the model runs without this crate and without Rust:
+
+```rust
+model.export_onnx("xor.onnx")?;     // model.to_onnx_bytes() gives the same bytes
+```
+
+Every runtime reads ONNX: `onnxruntime` in Python or C++,
+[`tract`](https://crates.io/crates/tract) in Rust, a browser through WebAssembly, a
+phone, a microcontroller.
+
+```python
+import numpy as np, onnxruntime as ort
+
+session = ort.InferenceSession("xor.onnx")
+print(session.run(None, {"input": np.array([[0., 1.]], dtype=np.float32)}))
+```
+
+Every `Dense` becomes one `Gemm` node, ONNX' GEneral Matrix Multiply. It computes
+`alpha·A·B + beta·C`, which with `alpha = beta = 1` and no transposes is exactly
+`Z = A_in·W + b`, so `W` and `b` are written the way `Layer` already stores them. The
+activation becomes a second node, except for `Linear`: `A = Z` is the Gemm's own output,
+so there is nothing to add. The graph's input is named `input` and its output `output`,
+and the sample count is a named dimension, so one file serves a caller predicting one
+sample and a caller predicting a thousand.
+
+**The good side**
+
+- It needs no new dependency. An ONNX file is protobuf, whose wire format is a list of
+  (tag, value) pairs, and the writer for it is about fifty lines in
+  [`src/onnx.rs`](src/onnx.rs).
+- The file is checked. `onnx.checker` accepts it, and `onnxruntime` gives the same
+  predictions as `model.predict`.
+
+**The bad side**
+
+- The weights are written as **f32**, not f64. Every runtime supports f32, while some
+  have no f64 kernel at all. So the weights are rounded, and predictions move by about
+  `1e-7`.
+- It only writes. Reading an ONNX file back into a `Sequential` is not implemented.
+- It covers what the library has: `Dense` with `Sigmoid`, `Linear` or `ReLU`. There is
+  no `Softmax`, no convolution and no recurrent layer yet.
+
+Run `cargo run --example export_onnx` to train the XOR model and write `xor.onnx`.
 
 ### Matrix engine: `safe_matmul`
 
